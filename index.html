@@ -6,6 +6,8 @@
     <title>쇼핑몰 판매가 산출 견적서</title>
     <!-- Tailwind CSS CDN 로드 -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS (엑셀/CSV 파일 파싱 및 생성) CDN 로드 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <!-- Google Fonts: Inter & Noto Sans KR 로드 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -80,7 +82,7 @@
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen py-4 px-3 sm:py-8 sm:px-5">
 
     <!-- 메인 견적서 컨테이너 -->
-    <main class="max-w-[1440px] mx-auto bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden print-container">
+    <main id="main-container" class="max-w-[1440px] mx-auto bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden print-container transition-shadow">
         
         <!-- 상단 파란색 포인트 바 -->
         <div class="h-2 bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500"></div>
@@ -129,6 +131,20 @@
                     </button>
                     <button type="button" id="btn-add-five" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-medium rounded-xl border border-blue-200 transition cursor-pointer">
                         + 5행 추가
+                    </button>
+                    <div class="h-5 w-px bg-slate-200 mx-0.5 hidden sm:block"></div>
+                    <input type="file" id="excel-upload-input" accept=".xlsx,.xls,.csv" class="hidden" />
+                    <button type="button" id="btn-upload-excel" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-semibold rounded-xl border border-indigo-200 transition cursor-pointer" title="매입처, 품목명, 옵션, 매입단가가 담긴 엑셀(.xlsx, .xls) 또는 CSV 파일을 불러옵니다">
+                        <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                        </svg>
+                        엑셀/CSV 업로드
+                    </button>
+                    <button type="button" id="btn-download-sample" class="inline-flex items-center gap-1 px-2.5 py-2.5 bg-white hover:bg-slate-50 text-slate-600 text-xs font-medium rounded-xl border border-slate-200 transition cursor-pointer" title="엑셀 업로드용 샘플 양식 다운로드">
+                        <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                        </svg>
+                        샘플양식
                     </button>
                 </div>
 
@@ -928,6 +944,194 @@
         }
 
         // ==========================================
+        // 엑셀 / CSV 파일 업로드 및 샘플 양식 다운로드
+        // ==========================================
+        function normalizeHeaderText(text) {
+            return String(text ?? '')
+                .toLowerCase()
+                .replace(/[\s\(\)\[\]\/,._-]+/g, '');
+        }
+
+        function detectColumnMapping(rowCells) {
+            const mapping = {
+                supplier: -1,
+                itemName: -1,
+                option: -1,
+                purchasePrice: -1,
+                note: -1
+            };
+            let matchedCount = 0;
+
+            rowCells.forEach((cell, idx) => {
+                const norm = normalizeHeaderText(cell);
+                if (!norm) return;
+
+                if (mapping.supplier === -1 && ['매입처', '거래처', '공급처', '도매처', '업체명', '업체', 'supplier', 'vendor'].some(k => norm.includes(k))) {
+                    mapping.supplier = idx;
+                    matchedCount++;
+                } else if (mapping.itemName === -1 && ['품목명', '상품명', '제품명', '품목', '상품', 'item', 'product'].some(k => norm.includes(k))) {
+                    mapping.itemName = idx;
+                    matchedCount++;
+                } else if (mapping.option === -1 && !norm.includes('추가금') && ['옵션', '규격', '상세옵션', 'option', 'spec'].some(k => norm.includes(k))) {
+                    mapping.option = idx;
+                    matchedCount++;
+                } else if (mapping.purchasePrice === -1 && !norm.includes('판매') && ['매입단가', '매입가', '단가', '공급가', '원가', '도매가', '매입액', '가격', 'price', 'cost'].some(k => norm.includes(k))) {
+                    mapping.purchasePrice = idx;
+                    matchedCount++;
+                } else if (mapping.note === -1 && ['비고', '메모', '참고', '특이사항', 'note', 'memo', 'remark'].some(k => norm.includes(k))) {
+                    mapping.note = idx;
+                    matchedCount++;
+                }
+            });
+
+            return { mapping, matchedCount };
+        }
+
+        function handleExcelFileUpload(file) {
+            if (!file) return;
+
+            const fileName = file.name || '';
+            if (!/\.(xlsx|xls|csv)$/i.test(fileName)) {
+                showToast('엑셀(.xlsx, .xls) 또는 CSV(.csv) 파일만 업로드할 수 있습니다.');
+                return;
+            }
+
+            if (typeof XLSX === 'undefined') {
+                showToast('엑셀 처리 모듈을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+                    if (!rawRows || rawRows.length === 0) {
+                        showToast('파일에 데이터가 비어 있습니다.');
+                        return;
+                    }
+
+                    // 상단 5행 내에서 헤더 행 자동 탐색
+                    let headerRowIndex = -1;
+                    let colMap = null;
+                    const scanLimit = Math.min(5, rawRows.length);
+
+                    for (let i = 0; i < scanLimit; i++) {
+                        const { mapping, matchedCount } = detectColumnMapping(rawRows[i]);
+                        if (matchedCount >= 2) {
+                            headerRowIndex = i;
+                            colMap = mapping;
+                            break;
+                        }
+                    }
+
+                    let startRow = 0;
+                    if (headerRowIndex !== -1) {
+                        startRow = headerRowIndex + 1;
+                    } else {
+                        // 헤더가 없는 파일인 경우 열 순서 자동 추정 (첫 열이 순번 숫자인지 확인)
+                        const firstRow = rawRows[0] || [];
+                        const firstColStr = String(firstRow[0] ?? '').trim();
+                        const startsWithIndex = /^[0-9]+$/.test(firstColStr) && firstRow.length >= 5;
+                        const offset = startsWithIndex ? 1 : 0;
+
+                        colMap = {
+                            supplier: offset,
+                            itemName: offset + 1,
+                            option: offset + 2,
+                            purchasePrice: offset + 3,
+                            note: offset + 4
+                        };
+                    }
+
+                    const importedRows = [];
+                    for (let r = startRow; r < rawRows.length; r++) {
+                        const cells = rawRows[r];
+                        if (!Array.isArray(cells)) continue;
+
+                        const getVal = (colIdx) => (colIdx >= 0 && colIdx < cells.length) ? String(cells[colIdx] ?? '').trim() : '';
+
+                        const supplier = getVal(colMap.supplier);
+                        const itemName = getVal(colMap.itemName);
+                        const option = getVal(colMap.option);
+                        const rawPrice = colMap.purchasePrice >= 0 && colMap.purchasePrice < cells.length ? cells[colMap.purchasePrice] : 0;
+                        const purchasePrice = parseNumber(rawPrice);
+                        const note = getVal(colMap.note);
+
+                        // 합계 행이나 완전 빈 행 제외
+                        const joinedText = `${supplier}${itemName}${option}`;
+                        if (joinedText === '' && purchasePrice === 0 && note === '') continue;
+                        if (['합계', '총합계', '소계', 'total'].includes(option.toLowerCase()) || ['합계', '총합계', '소계'].includes(itemName)) {
+                            continue;
+                        }
+
+                        importedRows.push({
+                            id: generateId(),
+                            supplier,
+                            itemName,
+                            option,
+                            purchasePrice,
+                            note
+                        });
+                    }
+
+                    if (importedRows.length === 0) {
+                        showToast('불러올 수 있는 유효한 품목 데이터를 찾지 못했습니다.');
+                        return;
+                    }
+
+                    // 기존에 내용이 입력된 행은 유지하고 빈 기본 행은 정리한 뒤 업로드 데이터 반영
+                    const existingValidRows = getValidRows();
+                    quoteRows = [...existingValidRows, ...importedRows];
+                    renderTable(false);
+
+                    showToast(`<strong>${escapeHtml(fileName)}</strong>에서 <strong>${importedRows.length}건</strong>의 품목을 불러왔습니다.`);
+                } catch (err) {
+                    showToast('파일을 읽는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.');
+                }
+            };
+
+            reader.onerror = function () {
+                showToast('파일을 열 수 없습니다. 다른 프로그램에서 사용 중인지 확인해 주세요.');
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        function downloadSampleExcel() {
+            if (typeof XLSX === 'undefined') {
+                showToast('엑셀 생성 모듈을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.');
+                return;
+            }
+
+            const sampleData = [
+                ['매입처', '품목명', '옵션', '매입단가', '비고'],
+                ['도매꾹', '프리미엄 코튼 반팔티', '화이트 / M', 6500, '기본 옵션'],
+                ['도매꾹', '프리미엄 코튼 반팔티', '화이트 / 2XL', 7500, '빅사이즈 추가금'],
+                ['신상마켓', '캔버스 데일리 에코백', '아이보리 / 단일', 4200, '']
+            ];
+
+            const worksheet = XLSX.utils.aoa_to_sheet(sampleData);
+            worksheet['!cols'] = [
+                { wch: 14 },
+                { wch: 24 },
+                { wch: 18 },
+                { wch: 12 },
+                { wch: 18 }
+            ];
+
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, '매입가목록');
+            XLSX.writeFile(workbook, '매입가_업로드_샘플양식.xlsx');
+
+            showToast('<strong>매입가_업로드_샘플양식.xlsx</strong> 파일이 다운로드되었습니다.');
+        }
+
+        // ==========================================
         // 초기화 및 이벤트 바인딩
         // ==========================================
         document.addEventListener('DOMContentLoaded', () => {
@@ -940,6 +1144,38 @@
             // 행 추가 버튼들
             document.getElementById('btn-add-row').addEventListener('click', () => addRow(true));
             document.getElementById('btn-add-five').addEventListener('click', () => addMultipleRows(5));
+
+            // 엑셀/CSV 업로드 및 샘플 양식 버튼
+            const fileInput = document.getElementById('excel-upload-input');
+            document.getElementById('btn-upload-excel').addEventListener('click', () => {
+                fileInput.click();
+            });
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                    handleExcelFileUpload(e.target.files[0]);
+                    e.target.value = '';
+                }
+            });
+            document.getElementById('btn-download-sample').addEventListener('click', downloadSampleExcel);
+
+            // 드래그 앤 드롭 파일 업로드 지원
+            const mainContainer = document.getElementById('main-container');
+            mainContainer.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                mainContainer.classList.add('ring-2', 'ring-indigo-400', 'bg-indigo-50/10');
+            });
+            mainContainer.addEventListener('dragleave', (e) => {
+                if (!mainContainer.contains(e.relatedTarget)) {
+                    mainContainer.classList.remove('ring-2', 'ring-indigo-400', 'bg-indigo-50/10');
+                }
+            });
+            mainContainer.addEventListener('drop', (e) => {
+                e.preventDefault();
+                mainContainer.classList.remove('ring-2', 'ring-indigo-400', 'bg-indigo-50/10');
+                if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    handleExcelFileUpload(e.dataTransfer.files[0]);
+                }
+            });
 
             // 시트 복사 및 CSV 다운로드 버튼
             document.getElementById('btn-copy-sheet').addEventListener('click', copySheetForSpreadsheet);
