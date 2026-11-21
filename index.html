@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>쇼핑몰 판매가 산출 견적서</title>
+    <!-- Tailwind CSS CDN 로드 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & Noto Sans KR 로드 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans KR"', '"Inter"', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 숫자 정렬을 위한 고정폭 숫자 스타일 */
+        .tabular-nums {
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* 토스트 애니메이션 */
+        @keyframes toastFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .animate-toast {
+            animation: toastFadeIn 0.2s ease-out forwards;
+        }
+
+        /* 인쇄 시 불필요한 버튼 및 안내 요소 숨김 처리 */
+        @media print {
+            body {
+                background-color: #ffffff !important;
+                padding: 0 !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .print-container {
+                box-shadow: none !important;
+                border: 1px solid #cbd5e1 !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+            }
+            input {
+                border: none !important;
+                background: transparent !important;
+                padding: 2px 0 !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen py-4 px-3 sm:py-8 sm:px-5">
+
+    <!-- 메인 견적서 컨테이너 -->
+    <main class="max-w-[1440px] mx-auto bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden print-container">
+        
+        <!-- 상단 파란색 포인트 바 -->
+        <div class="h-2 bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500"></div>
+
+        <!-- 견적서 헤더 영역 -->
+        <header class="p-5 sm:p-8 border-b border-slate-200">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold tracking-wide mb-2">
+                        <span class="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                        SHOPPING MALL PRICING SHEET
+                    </div>
+                    <h1 class="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+                        상품 판매가 산출 견적표
+                    </h1>
+                    <p class="text-sm text-slate-500 mt-1">
+                        매입 단가를 입력하면 배율별 판매가(<span class="text-blue-600 font-semibold">×1.5</span> / <span class="text-blue-700 font-semibold">×1.6</span> / <span class="text-indigo-600 font-semibold">×1.8</span> / <span class="text-sky-700 font-semibold">×2.0</span>)와 <span class="text-slate-700 font-semibold">동일 품목 최저가 대비 옵션 추가금</span>이 자동 계산됩니다.
+                    </p>
+                </div>
+
+                <!-- 견적서 메타 정보 박스 (견적서 느낌 강조) -->
+                <div class="bg-slate-50/80 border border-blue-100 rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm min-w-[240px]">
+                    <div class="flex justify-between items-center py-1 border-b border-slate-200/70">
+                        <span class="text-slate-500 font-medium">작성일자</span>
+                        <span id="current-date" class="font-semibold text-slate-800 tabular-nums"></span>
+                    </div>
+                    <div class="flex justify-between items-center py-1 border-b border-slate-200/70">
+                        <span class="text-slate-500 font-medium">등록 품목수</span>
+                        <span class="font-semibold text-blue-600 tabular-nums"><span id="header-item-count">0</span> 건</span>
+                    </div>
+                    <div class="flex justify-between items-center pt-1">
+                        <span class="text-slate-500 font-medium">계산 기준</span>
+                        <span class="font-medium text-slate-700">원 단위 반올림</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 상단 도구 모음 (행 추가, 시트 저장/복사, 초기화, 인쇄) -->
+            <div class="mt-6 pt-5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 no-print">
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" id="btn-add-row" class="inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl shadow-xs transition cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
+                        행 추가
+                    </button>
+                    <button type="button" id="btn-add-five" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-medium rounded-xl border border-blue-200 transition cursor-pointer">
+                        + 5행 추가
+                    </button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="hidden xl:inline-block text-xs text-slate-400 mr-1">
+                        💡 판매가 또는 +옵션추가금 클릭 시 숫자 복사
+                    </span>
+                    <button type="button" id="btn-copy-sheet" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-semibold rounded-xl border border-blue-200 transition cursor-pointer" title="엑셀이나 구글 시트에 바로 Ctrl+V로 붙여넣기할 수 있습니다">
+                        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+                        </svg>
+                        시트 복사
+                    </button>
+                    <button type="button" id="btn-download-csv" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-semibold rounded-xl shadow-xs transition cursor-pointer" title="엑셀 및 스프레드시트용 CSV 파일 저장">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        시트 저장 (.csv)
+                    </button>
+                    <button type="button" id="btn-reset-trigger" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white hover:bg-slate-50 text-slate-600 text-sm font-medium rounded-xl border border-slate-200 transition cursor-pointer">
+                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                        </svg>
+                        초기화
+                    </button>
+                    <button type="button" id="btn-print" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-xl border border-slate-200 transition cursor-pointer">
+                        <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+                        </svg>
+                        인쇄
+                    </button>
+                </div>
+            </div>
+
+            <!-- 초기화 확인 배너 (confirm() 대신 사용) -->
+            <div id="reset-confirm-bar" class="hidden mt-4 p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 no-print">
+                <div class="flex items-center gap-2 text-sm text-amber-800 font-medium">
+                    <svg class="w-5 h-5 text-amber-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                    <span>작성된 모든 견적 항목을 삭제하고 초기화하시겠습니까?</span>
+                </div>
+                <div class="flex items-center gap-2 self-end sm:self-auto">
+                    <button type="button" id="btn-reset-cancel" class="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
+                        취소
+                    </button>
+                    <button type="button" id="btn-reset-confirm" class="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 cursor-pointer">
+                        전체 초기화
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- 견적서 테이블 영역 (데스크톱: 표 형태 / 모바일: 가로 스크롤 없는 카드형 그리드) -->
+        <section class="w-full">
+            <table class="w-full border-collapse block md:table">
+                <!-- 데스크톱 테이블 헤더 -->
+                <thead class="hidden md:table-header-group bg-blue-50/90 border-b-2 border-blue-600 text-blue-950 text-xs font-bold uppercase tracking-wider">
+                    <tr>
+                        <th class="py-3.5 px-1.5 text-center w-10 border-r border-blue-100">No.</th>
+                        <th class="py-3.5 px-2.5 text-left w-[9%] border-r border-blue-100">매입처</th>
+                        <th class="py-3.5 px-2.5 text-left w-[12%] border-r border-blue-100">품목명 <span class="text-[10px] font-normal text-blue-600">(옵션그룹)</span></th>
+                        <th class="py-3.5 px-2.5 text-left w-[11%] border-r border-blue-100">옵션 (크기, 종류)</th>
+                        <th class="py-3.5 px-2.5 text-right w-[11%] border-r border-blue-100">매입 단가 (원)</th>
+                        <th class="py-3.5 px-2.5 text-right w-[11.5%] border-r border-blue-100 bg-blue-100/50 text-blue-800">
+                            판매가 (×1.5)
+                        </th>
+                        <th class="py-3.5 px-2.5 text-right w-[11.5%] border-r border-blue-100 bg-blue-100/80 text-blue-900">
+                            판매가 (×1.6)
+                        </th>
+                        <th class="py-3.5 px-2.5 text-right w-[11.5%] border-r border-blue-100 bg-indigo-50/90 text-indigo-900">
+                            판매가 (×1.8)
+                        </th>
+                        <th class="py-3.5 px-2.5 text-right w-[11.5%] border-r border-blue-100 bg-sky-100/70 text-sky-900">
+                            판매가 (×2.0)
+                        </th>
+                        <th class="py-3.5 px-2.5 text-left w-[10%] border-r border-blue-100">비고</th>
+                        <th class="py-3.5 px-1.5 text-center w-10 no-print">삭제</th>
+                    </tr>
+                </thead>
+
+                <!-- 동적 행이 삽입되는 본문 -->
+                <tbody id="quote-tbody" class="block md:table-row-group divide-y divide-slate-200">
+                    <!-- JavaScript로 행 렌더링 -->
+                </tbody>
+            </table>
+
+            <!-- 빈 상태 안내 (행이 모두 삭제되었을 때) -->
+            <div id="empty-state" class="hidden py-14 px-4 text-center">
+                <div class="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-3">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+                    </svg>
+                </div>
+                <p class="text-slate-600 font-medium">등록된 견적 품목이 없습니다.</p>
+                <p class="text-sm text-slate-400 mt-1 mb-4">아래 버튼을 눌러 새로운 상품 옵션을 추가하세요.</p>
+                <button type="button" onclick="addRow(true)" class="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition cursor-pointer">
+                    + 첫 번째 행 추가하기
+                </button>
+            </div>
+        </section>
+
+        <!-- 견적서 합계 푸터 영역 -->
+        <footer class="bg-slate-50 border-t-2 border-blue-600 p-5 sm:p-7">
+            <div class="flex flex-col gap-5">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs sm:text-sm text-slate-500">
+                    <div>
+                        <span class="font-semibold text-slate-700 mr-2">견적 및 옵션 추가금 산출 안내</span>
+                        <span>• 같은 <strong>품목명</strong>으로 입력된 항목 중 <strong>가장 낮은 단가</strong>를 기본가(+0원)로 잡고 옵션별 차액을 자동 계산합니다.</span>
+                    </div>
+                    <div class="text-xs text-slate-400">
+                        • 판매가 또는 <span class="text-blue-600 font-medium">+옵션추가금</span> 클릭 시 숫자 복사
+                    </div>
+                </div>
+
+                <!-- 합계 금액 요약 카드 (5종) -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 w-full">
+                    <div class="bg-white border border-slate-200 rounded-xl px-4 py-3 text-right">
+                        <div class="text-xs font-medium text-slate-500">총 매입 단가 합계</div>
+                        <div class="text-base sm:text-lg font-bold text-slate-800 tabular-nums mt-0.5">
+                            <span id="total-purchase">0</span><span class="text-xs font-normal text-slate-500 ml-0.5">원</span>
+                        </div>
+                    </div>
+                    <div class="bg-blue-50/70 border border-blue-200 rounded-xl px-4 py-3 text-right">
+                        <div class="text-xs font-semibold text-blue-700">판매가 합계 (×1.5)</div>
+                        <div class="text-base sm:text-lg font-bold text-blue-700 tabular-nums mt-0.5">
+                            <span id="total-price-15">0</span><span class="text-xs font-normal text-blue-600 ml-0.5">원</span>
+                        </div>
+                    </div>
+                    <div class="bg-blue-100/70 border border-blue-300 rounded-xl px-4 py-3 text-right">
+                        <div class="text-xs font-semibold text-blue-900">판매가 합계 (×1.6)</div>
+                        <div class="text-base sm:text-lg font-bold text-blue-900 tabular-nums mt-0.5">
+                            <span id="total-price-16">0</span><span class="text-xs font-normal text-blue-700 ml-0.5">원</span>
+                        </div>
+                    </div>
+                    <div class="bg-indigo-50/80 border border-indigo-200 rounded-xl px-4 py-3 text-right">
+                        <div class="text-xs font-semibold text-indigo-800">판매가 합계 (×1.8)</div>
+                        <div class="text-base sm:text-lg font-bold text-indigo-800 tabular-nums mt-0.5">
+                            <span id="total-price-18">0</span><span class="text-xs font-normal text-indigo-600 ml-0.5">원</span>
+                        </div>
+                    </div>
+                    <div class="bg-blue-600 text-white rounded-xl px-4 py-3 text-right shadow-xs">
+                        <div class="text-xs font-medium text-blue-100">판매가 합계 (×2.0)</div>
+                        <div class="text-base sm:text-lg font-bold tabular-nums mt-0.5">
+                            <span id="total-price-20">0</span><span class="text-xs font-normal text-blue-100 ml-0.5">원</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 하단 모바일 행 추가 버튼 (긴 목록 입력 시 편의 제공) -->
+            <div class="mt-5 pt-4 border-t border-slate-200/80 flex justify-center md:justify-start no-print">
+                <button type="button" onclick="addRow(true)" class="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 bg-white hover:bg-blue-50 text-blue-600 font-semibold text-sm rounded-xl border border-blue-300 shadow-2xs transition cursor-pointer">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                    새 옵션 행 추가하기
+                </button>
+            </div>
+        </footer>
+    </main>
+
+    <!-- 복사 및 상태 알림용 토스트 메시지 -->
+    <div id="toast-container" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col items-center gap-2 w-max max-w-[92vw]"></div>
+
+    <script>
+        // ==========================================
+        // 상태 관리 및 초기 데이터 설정
+        // ==========================================
+        let quoteRows = [
+            { id: generateId(), supplier: '', itemName: '', option: '', purchasePrice: 0, note: '' },
+            { id: generateId(), supplier: '', itemName: '', option: '', purchasePrice: 0, note: '' },
+            { id: generateId(), supplier: '', itemName: '', option: '', purchasePrice: 0, note: '' }
+        ];
+
+        // 고유 ID 생성 함수
+        function generateId() {
+            return 'row_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
+        }
+
+        // 숫자를 천 단위 쉼표 문자열로 포맷팅
+        function formatNumber(num) {
+            if (num === null || num === undefined || isNaN(num)) return '0';
+            return Number(num).toLocaleString('ko-KR');
+        }
+
+        // 문자열에서 숫자만 추출해 정수로 변환
+        function parseNumber(str) {
+            if (typeof str === 'number') return Math.max(0, Math.floor(str));
+            if (!str) return 0;
+            const cleaned = String(str).replace(/[^0-9]/g, '');
+            return cleaned ? parseInt(cleaned, 10) : 0;
+        }
+
+        // ==========================================
+        // 클립보드 복사 및 토스트 알림 유틸리티
+        // ==========================================
+        function showToast(htmlMessage) {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+
+            const toast = document.createElement('div');
+            toast.className = 'animate-toast bg-slate-900/95 text-white text-xs sm:text-sm px-4 py-2.5 rounded-full shadow-lg border border-slate-700/70 flex items-center gap-2';
+            toast.innerHTML = `<span class="w-2 h-2 rounded-full bg-blue-400 shrink-0"></span><span>${htmlMessage}</span>`;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.25s ease';
+                setTimeout(() => {
+                    if (toast.parentNode) toast.parentNode.removeChild(toast);
+                }, 260);
+            }, 2200);
+        }
+
+        function copyTextToClipboard(text, successMessage) {
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.setAttribute('readonly', '');
+                textarea.style.position = 'fixed';
+                textarea.style.top = '-9999px';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                textarea.setSelectionRange(0, textarea.value.length);
+                const copied = document.execCommand('copy');
+                document.body.removeChild(textarea);
+
+                if (copied) {
+                    showToast(successMessage);
+                } else {
+                    showToast('복사에 실패했습니다. 직접 선택하여 복사해 주세요.');
+                }
+            } catch (err) {
+                showToast('복사 중 오류가 발생했습니다.');
+            }
+        }
+
+        function copyPriceToClipboard(amount, label) {
+            const numericStr = String(amount || 0);
+            copyTextToClipboard(
+                numericStr,
+                `${label} <strong>${formatNumber(amount)}</strong>원이 복사되었습니다.`
+            );
+        }
+
+        // ==========================================
+        // 품목명 기준 최저 매입단가 맵 계산
+        // ==========================================
+        function getMinPurchaseByItemName() {
+            const minMap = {};
+            quoteRows.forEach(row => {
+                const key = (row.itemName || '').trim();
+                const price = row.purchasePrice || 0;
+                if (key !== '' && price > 0) {
+                    if (minMap[key] === undefined || price < minMap[key]) {
+                        minMap[key] = price;
+                    }
+                }
+            });
+            return minMap;
+        }
+
+        // 개별 셀 내부의 판매가 + 옵션 추가금 HTML 생성
+        function buildCalcCellContent(row, multiplier, minMap, themeColors) {
+            const purchase = row.purchasePrice || 0;
+            const price = Math.round(purchase * multiplier);
+            const itemKey = (row.itemName || '').trim();
+            const hasGroupMin = itemKey !== '' && purchase > 0 && minMap[itemKey] !== undefined;
+
+            let optionDiffHtml = '';
+            if (hasGroupMin) {
+                const basePrice = Math.round(minMap[itemKey] * multiplier);
+                const diff = Math.max(0, price - basePrice);
+
+                if (diff === 0) {
+                    optionDiffHtml = `
+                        <div class="mt-1 flex items-center justify-between md:justify-end">
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-white/80 text-slate-500 border border-slate-200/80 tabular-nums">
+                                기준 (+0원)
+                            </span>
+                        </div>
+                    `;
+                } else {
+                    optionDiffHtml = `
+                        <div class="mt-1 flex items-center justify-between md:justify-end">
+                            <button type="button"
+                                onclick="copyOptionDiffFromRow('${row.id}', ${multiplier})"
+                                title="클릭하여 옵션 추가금액만 복사"
+                                class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-semibold ${themeColors.badge} hover:opacity-85 transition cursor-pointer tabular-nums">
+                                +${formatNumber(diff)}원
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+
+            return `
+                <div class="md:hidden text-[11px] font-semibold ${themeColors.mobileLabel} mb-0.5">판매가 (×${multiplier.toFixed(1)})</div>
+                <button type="button" 
+                    onclick="copyPriceFromRow('${row.id}', ${multiplier})"
+                    title="클릭하여 판매가 복사"
+                    class="w-full flex items-center justify-between md:justify-end gap-1 ${themeColors.priceText} font-bold text-sm tabular-nums cursor-pointer group">
+                    <svg class="w-3.5 h-3.5 ${themeColors.icon} shrink-0 no-print" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
+                    </svg>
+                    <span>${formatNumber(price)}<span class="text-xs font-normal ml-0.5">원</span></span>
+                </button>
+                ${optionDiffHtml}
+            `;
+        }
+
+        const CALC_THEMES = {
+            1.5: {
+                mobileLabel: 'text-blue-700',
+                priceText: 'text-blue-700 hover:text-blue-900',
+                icon: 'text-blue-400 group-hover:text-blue-700',
+                badge: 'bg-blue-600 text-white'
+            },
+            1.6: {
+                mobileLabel: 'text-blue-800',
+                priceText: 'text-blue-900 hover:text-blue-700',
+                icon: 'text-blue-500 group-hover:text-blue-700',
+                badge: 'bg-blue-700 text-white'
+            },
+            1.8: {
+                mobileLabel: 'text-indigo-800',
+                priceText: 'text-indigo-900 hover:text-indigo-700',
+                icon: 'text-indigo-400 group-hover:text-indigo-700',
+                badge: 'bg-indigo-600 text-white'
+            },
+            2.0: {
+                mobileLabel: 'text-sky-800',
+                priceText: 'text-sky-900 hover:text-sky-700',
+                icon: 'text-sky-500 group-hover:text-sky-700',
+                badge: 'bg-sky-700 text-white'
+            }
+        };
+
+        // 포커스를 유지한 채 모든 행의 계산 셀(판매가 및 품목별 옵션 추가금)만 실시간 갱신
+        function refreshAllCalculatedCells() {
+            const tbody = document.getElementById('quote-tbody');
+            if (!tbody) return;
+            const minMap = getMinPurchaseByItemName();
+
+            quoteRows.forEach(row => {
+                const tr = tbody.querySelector(`tr[data-id="${row.id}"]`);
+                if (!tr) return;
+
+                [1.5, 1.6, 1.8, 2.0].forEach(mult => {
+                    const cell = tr.querySelector(`[data-mult="${mult.toFixed(1)}"]`);
+                    if (cell) {
+                        cell.innerHTML = buildCalcCellContent(row, mult, minMap, CALC_THEMES[mult]);
+                    }
+                });
+            });
+
+            updateSummaryTotals();
+        }
+
+        // ==========================================
+        // 테이블 렌더링 및 UI 업데이트
+        // ==========================================
+        function renderTable(focusLastRow = false) {
+            const tbody = document.getElementById('quote-tbody');
+            const emptyState = document.getElementById('empty-state');
+
+            if (quoteRows.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                updateSummaryTotals();
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            const minMap = getMinPurchaseByItemName();
+
+            tbody.innerHTML = quoteRows.map((row, index) => {
+                const purchase = row.purchasePrice || 0;
+
+                return `
+                <tr data-id="${row.id}" class="block md:table-row bg-white hover:bg-blue-50/20 transition p-4 md:p-0 relative">
+                    <!-- 모바일 카드 상단 헤더 (번호 및 삭제 버튼) -->
+                    <td class="flex md:hidden items-center justify-between pb-2.5 mb-2.5 border-b border-slate-100">
+                        <span class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md">
+                            No. ${index + 1}
+                        </span>
+                        <button type="button" onclick="deleteRow('${row.id}')" class="inline-flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 transition cursor-pointer">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            삭제
+                        </button>
+                    </td>
+
+                    <!-- 데스크톱 행 번호 -->
+                    <td class="hidden md:table-cell py-2 px-1.5 text-center text-xs font-semibold text-slate-400 border-r border-slate-200 tabular-nums">
+                        ${index + 1}
+                    </td>
+
+                    <!-- 매입처 -->
+                    <td class="block md:table-cell mb-2.5 md:mb-0 md:py-2 md:px-1.5 md:border-r md:border-slate-200">
+                        <label class="block md:hidden text-xs font-semibold text-slate-500 mb-1">매입처</label>
+                        <input type="text" 
+                            value="${escapeHtml(row.supplier)}" 
+                            placeholder="예: 도매꾹" 
+                            oninput="handleTextChange('${row.id}', 'supplier', this.value)"
+                            class="w-full px-3 py-2 md:px-2 md:py-1.5 text-sm text-slate-800 bg-slate-50/50 md:bg-transparent border border-slate-200 md:border-transparent focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 rounded-lg outline-none transition placeholder:text-slate-300" />
+                    </td>
+
+                    <!-- 품목명 (옵션 그룹 기준) -->
+                    <td class="block md:table-cell mb-2.5 md:mb-0 md:py-2 md:px-1.5 md:border-r md:border-slate-200">
+                        <label class="block md:hidden text-xs font-semibold text-slate-500 mb-1">품목명 (동일 품목명 기준 최저가 자동 비교)</label>
+                        <input type="text" 
+                            value="${escapeHtml(row.itemName)}" 
+                            placeholder="동일 상품명 입력" 
+                            oninput="handleItemNameChange('${row.id}', this.value)"
+                            class="w-full px-3 py-2 md:px-2 md:py-1.5 text-sm font-medium text-slate-800 bg-slate-50/50 md:bg-transparent border border-slate-200 md:border-transparent focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 rounded-lg outline-none transition placeholder:text-slate-300" />
+                    </td>
+
+                    <!-- 옵션 (크기, 종류) -->
+                    <td class="block md:table-cell mb-2.5 md:mb-0 md:py-2 md:px-1.5 md:border-r md:border-slate-200">
+                        <label class="block md:hidden text-xs font-semibold text-slate-500 mb-1">옵션 (크기, 종류)</label>
+                        <input type="text" 
+                            value="${escapeHtml(row.option)}" 
+                            placeholder="예: 화이트 / L" 
+                            oninput="handleTextChange('${row.id}', 'option', this.value)"
+                            class="w-full px-3 py-2 md:px-2 md:py-1.5 text-sm text-slate-700 bg-slate-50/50 md:bg-transparent border border-slate-200 md:border-transparent focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 rounded-lg outline-none transition placeholder:text-slate-300" />
+                    </td>
+
+                    <!-- 매입 단가 -->
+                    <td class="block md:table-cell mb-3 md:mb-0 md:py-2 md:px-1.5 md:border-r md:border-slate-200">
+                        <label class="block md:hidden text-xs font-semibold text-slate-500 mb-1">매입 단가 (원)</label>
+                        <div class="relative flex items-center">
+                            <input type="text" 
+                                inputmode="numeric"
+                                value="${purchase > 0 ? formatNumber(purchase) : ''}" 
+                                placeholder="0" 
+                                oninput="handlePriceInput('${row.id}', this)"
+                                onkeydown="handlePriceKeydown(event, ${index})"
+                                class="price-input w-full pl-3 pr-7 py-2 md:pl-2 md:pr-6 md:py-1.5 text-right text-sm font-semibold text-slate-900 tabular-nums bg-slate-50/50 md:bg-transparent border border-slate-200 md:border-transparent focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 rounded-lg outline-none transition placeholder:text-slate-300" />
+                            <span class="absolute right-2 text-xs text-slate-400 pointer-events-none">원</span>
+                        </div>
+                    </td>
+
+                    <!-- 판매가 계산 결과 4종 (모바일: 2x2 그리드 / 데스크톱: 개별 테이블 셀) -->
+                    <td data-mult="1.5" class="inline-block w-[48.5%] mr-[3%] mb-2 md:mb-0 md:mr-0 md:w-auto md:table-cell md:py-2 md:px-2.5 md:border-r md:border-blue-100 bg-blue-50/50 rounded-xl md:rounded-none p-2.5 md:text-right align-middle">
+                        ${buildCalcCellContent(row, 1.5, minMap, CALC_THEMES[1.5])}
+                    </td>
+
+                    <td data-mult="1.6" class="inline-block w-[48.5%] mb-2 md:mb-0 md:w-auto md:table-cell md:py-2 md:px-2.5 md:border-r md:border-blue-100 bg-blue-100/50 rounded-xl md:rounded-none p-2.5 md:text-right align-middle">
+                        ${buildCalcCellContent(row, 1.6, minMap, CALC_THEMES[1.6])}
+                    </td>
+
+                    <td data-mult="1.8" class="inline-block w-[48.5%] mr-[3%] md:mr-0 md:w-auto md:table-cell md:py-2 md:px-2.5 md:border-r md:border-indigo-100 bg-indigo-50/60 rounded-xl md:rounded-none p-2.5 md:text-right align-middle">
+                        ${buildCalcCellContent(row, 1.8, minMap, CALC_THEMES[1.8])}
+                    </td>
+
+                    <td data-mult="2.0" class="inline-block w-[48.5%] md:w-auto md:table-cell md:py-2 md:px-2.5 md:border-r md:border-sky-100 bg-sky-100/50 rounded-xl md:rounded-none p-2.5 md:text-right align-middle">
+                        ${buildCalcCellContent(row, 2.0, minMap, CALC_THEMES[2.0])}
+                    </td>
+
+                    <!-- 비고 (메모) -->
+                    <td class="block md:table-cell mt-2.5 md:mt-0 md:py-2 md:px-1.5 md:border-r md:border-slate-200">
+                        <label class="block md:hidden text-xs font-semibold text-slate-500 mb-1">비고</label>
+                        <input type="text" 
+                            value="${escapeHtml(row.note || '')}" 
+                            placeholder="메모 입력" 
+                            oninput="handleTextChange('${row.id}', 'note', this.value)"
+                            class="w-full px-3 py-2 md:px-2 md:py-1.5 text-sm text-slate-600 bg-slate-50/50 md:bg-transparent border border-slate-200 md:border-transparent focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 rounded-lg outline-none transition placeholder:text-slate-300" />
+                    </td>
+
+                    <!-- 데스크톱 행 삭제 버튼 -->
+                    <td class="hidden md:table-cell py-2 px-1.5 text-center no-print">
+                        <button type="button" onclick="deleteRow('${row.id}')" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer" title="이 행 삭제">
+                            <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </td>
+                </tr>
+                `;
+            }).join('');
+
+            updateSummaryTotals();
+
+            if (focusLastRow) {
+                const lastTr = tbody.lastElementChild;
+                if (lastTr) {
+                    const firstInput = lastTr.querySelector('input[type="text"]');
+                    if (firstInput) firstInput.focus();
+                }
+            }
+        }
+
+        // HTML 특수문자 이스케이프 처리
+        function escapeHtml(text) {
+            if (!text) return '';
+            return String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // 텍스트 필드(매입처, 옵션, 비고) 변경 핸들러
+        function handleTextChange(id, field, value) {
+            const target = quoteRows.find(r => r.id === id);
+            if (target) {
+                target[field] = value;
+            }
+        }
+
+        // 품목명 변경 핸들러 (동일 품목명 그룹의 옵션 추가금을 즉시 재계산)
+        function handleItemNameChange(id, value) {
+            const target = quoteRows.find(r => r.id === id);
+            if (target) {
+                target.itemName = value;
+                refreshAllCalculatedCells();
+            }
+        }
+
+        // 매입 단가 입력 핸들러 (포커스를 유지하면서 천 단위 쉼표 및 그룹 내 옵션 추가금 즉시 갱신)
+        function handlePriceInput(id, inputEl) {
+            const numericValue = parseNumber(inputEl.value);
+            const target = quoteRows.find(r => r.id === id);
+            if (!target) return;
+
+            target.purchasePrice = numericValue;
+
+            // 입력창 천 단위 쉼표 실시간 적용
+            inputEl.value = numericValue > 0 ? formatNumber(numericValue) : '';
+
+            // 같은 품목명 그룹의 최저가 변동까지 반영하여 전체 계산 셀 갱신
+            refreshAllCalculatedCells();
+        }
+
+        // 마지막 행의 단가 입력란에서 Enter 키를 누르면 자동으로 새 행 추가
+        function handlePriceKeydown(event, index) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (index === quoteRows.length - 1) {
+                    addRow(true);
+                } else {
+                    const tbody = document.getElementById('quote-tbody');
+                    const nextTr = tbody.children[index + 1];
+                    if (nextTr) {
+                        const nextPriceInput = nextTr.querySelector('.price-input');
+                        if (nextPriceInput) nextPriceInput.focus();
+                    }
+                }
+            }
+        }
+
+        // 계산된 판매가 복사 헬퍼
+        function copyPriceFromRow(id, multiplier) {
+            const target = quoteRows.find(r => r.id === id);
+            if (!target) return;
+            const calculated = Math.round((target.purchasePrice || 0) * multiplier);
+            copyPriceToClipboard(calculated, `×${multiplier.toFixed(1)} 판매가`);
+        }
+
+        // 계산된 옵션 추가금액 복사 헬퍼
+        function copyOptionDiffFromRow(id, multiplier) {
+            const target = quoteRows.find(r => r.id === id);
+            if (!target) return;
+            const minMap = getMinPurchaseByItemName();
+            const itemKey = (target.itemName || '').trim();
+            const purchase = target.purchasePrice || 0;
+            if (!itemKey || purchase <= 0 || minMap[itemKey] === undefined) return;
+
+            const price = Math.round(purchase * multiplier);
+            const basePrice = Math.round(minMap[itemKey] * multiplier);
+            const diff = Math.max(0, price - basePrice);
+
+            copyPriceToClipboard(diff, `×${multiplier.toFixed(1)} 옵션 추가금(+${formatNumber(diff)}원)`);
+        }
+
+        // 하단 합계 및 헤더 품목수 갱신
+        function updateSummaryTotals() {
+            let totalPurchase = 0;
+            let total15 = 0;
+            let total16 = 0;
+            let total18 = 0;
+            let total20 = 0;
+
+            quoteRows.forEach(row => {
+                const p = row.purchasePrice || 0;
+                totalPurchase += p;
+                total15 += Math.round(p * 1.5);
+                total16 += Math.round(p * 1.6);
+                total18 += Math.round(p * 1.8);
+                total20 += Math.round(p * 2.0);
+            });
+
+            document.getElementById('header-item-count').textContent = quoteRows.length;
+            document.getElementById('total-purchase').textContent = formatNumber(totalPurchase);
+            document.getElementById('total-price-15').textContent = formatNumber(total15);
+            document.getElementById('total-price-16').textContent = formatNumber(total16);
+            document.getElementById('total-price-18').textContent = formatNumber(total18);
+            document.getElementById('total-price-20').textContent = formatNumber(total20);
+        }
+
+        // ==========================================
+        // 행 추가 / 삭제 / 초기화 액션
+        // ==========================================
+        function addRow(focus = false) {
+            quoteRows.push({
+                id: generateId(),
+                supplier: '',
+                itemName: '',
+                option: '',
+                purchasePrice: 0,
+                note: ''
+            });
+            renderTable(focus);
+        }
+
+        function addMultipleRows(count) {
+            for (let i = 0; i < count; i++) {
+                quoteRows.push({
+                    id: generateId(),
+                    supplier: '',
+                    itemName: '',
+                    option: '',
+                    purchasePrice: 0,
+                    note: ''
+                });
+            }
+            renderTable(false);
+            showToast(`${count}개의 입력 행이 추가되었습니다.`);
+        }
+
+        function deleteRow(id) {
+            quoteRows = quoteRows.filter(row => row.id !== id);
+            renderTable(false);
+        }
+
+        // ==========================================
+        // 시트 저장 (.csv 다운로드) 및 시트 복사 (TSV)
+        // ==========================================
+        function getValidRows() {
+            return quoteRows.filter(row =>
+                row.supplier.trim() !== '' ||
+                row.itemName.trim() !== '' ||
+                row.option.trim() !== '' ||
+                (row.purchasePrice && row.purchasePrice > 0) ||
+                (row.note && row.note.trim() !== '')
+            );
+        }
+
+        function escapeCsvCell(value) {
+            const str = String(value ?? '');
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        }
+
+        function downloadSheetAsCSV() {
+            const validRows = getValidRows();
+            if (validRows.length === 0) {
+                showToast('저장할 견적 데이터가 없습니다. 내용을 먼저 입력해 주세요.');
+                return;
+            }
+
+            const minMap = getMinPurchaseByItemName();
+            const headers = [
+                '번호', '매입처', '품목명', '옵션(크기/종류)', '매입단가',
+                '판매가(x1.5)', '옵션추가금(x1.5)',
+                '판매가(x1.6)', '옵션추가금(x1.6)',
+                '판매가(x1.8)', '옵션추가금(x1.8)',
+                '판매가(x2.0)', '옵션추가금(x2.0)',
+                '비고'
+            ];
+            let totalPurchase = 0;
+            let total15 = 0;
+            let total16 = 0;
+            let total18 = 0;
+            let total20 = 0;
+
+            const csvLines = [headers.map(escapeCsvCell).join(',')];
+
+            validRows.forEach((row, idx) => {
+                const purchase = row.purchasePrice || 0;
+                const price15 = Math.round(purchase * 1.5);
+                const price16 = Math.round(purchase * 1.6);
+                const price18 = Math.round(purchase * 1.8);
+                const price20 = Math.round(purchase * 2.0);
+
+                const itemKey = (row.itemName || '').trim();
+                const hasMin = itemKey !== '' && purchase > 0 && minMap[itemKey] !== undefined;
+                const diff15 = hasMin ? Math.max(0, price15 - Math.round(minMap[itemKey] * 1.5)) : 0;
+                const diff16 = hasMin ? Math.max(0, price16 - Math.round(minMap[itemKey] * 1.6)) : 0;
+                const diff18 = hasMin ? Math.max(0, price18 - Math.round(minMap[itemKey] * 1.8)) : 0;
+                const diff20 = hasMin ? Math.max(0, price20 - Math.round(minMap[itemKey] * 2.0)) : 0;
+
+                totalPurchase += purchase;
+                total15 += price15;
+                total16 += price16;
+                total18 += price18;
+                total20 += price20;
+
+                const line = [
+                    idx + 1,
+                    row.supplier.trim(),
+                    row.itemName.trim(),
+                    row.option.trim(),
+                    purchase,
+                    price15, diff15,
+                    price16, diff16,
+                    price18, diff18,
+                    price20, diff20,
+                    (row.note || '').trim()
+                ];
+                csvLines.push(line.map(escapeCsvCell).join(','));
+            });
+
+            // 하단 합계 행 추가
+            csvLines.push(['', '', '', '합계', totalPurchase, total15, '', total16, '', total18, '', total20, '', ''].map(escapeCsvCell).join(','));
+
+            // 한글 깨짐 방지를 위한 UTF-8 BOM 추가
+            const csvContent = '\uFEFF' + csvLines.join('\r\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+            const fileName = `상품판매가_견적표_${dateStr}.csv`;
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', fileName);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            showToast(`<strong>${fileName}</strong> 파일로 저장되었습니다.`);
+        }
+
+        function copySheetForSpreadsheet() {
+            const validRows = getValidRows();
+            if (validRows.length === 0) {
+                showToast('복사할 견적 데이터가 없습니다. 내용을 먼저 입력해 주세요.');
+                return;
+            }
+
+            const minMap = getMinPurchaseByItemName();
+            const headers = [
+                '번호', '매입처', '품목명', '옵션(크기/종류)', '매입단가',
+                '판매가(x1.5)', '옵션추가금(x1.5)',
+                '판매가(x1.6)', '옵션추가금(x1.6)',
+                '판매가(x1.8)', '옵션추가금(x1.8)',
+                '판매가(x2.0)', '옵션추가금(x2.0)',
+                '비고'
+            ];
+            const tsvLines = [headers.join('\t')];
+
+            validRows.forEach((row, idx) => {
+                const purchase = row.purchasePrice || 0;
+                const price15 = Math.round(purchase * 1.5);
+                const price16 = Math.round(purchase * 1.6);
+                const price18 = Math.round(purchase * 1.8);
+                const price20 = Math.round(purchase * 2.0);
+
+                const itemKey = (row.itemName || '').trim();
+                const hasMin = itemKey !== '' && purchase > 0 && minMap[itemKey] !== undefined;
+                const diff15 = hasMin ? Math.max(0, price15 - Math.round(minMap[itemKey] * 1.5)) : 0;
+                const diff16 = hasMin ? Math.max(0, price16 - Math.round(minMap[itemKey] * 1.6)) : 0;
+                const diff18 = hasMin ? Math.max(0, price18 - Math.round(minMap[itemKey] * 1.8)) : 0;
+                const diff20 = hasMin ? Math.max(0, price20 - Math.round(minMap[itemKey] * 2.0)) : 0;
+
+                const clean = (val) => String(val ?? '').replace(/[\t\r\n]+/g, ' ').trim();
+                tsvLines.push([
+                    idx + 1,
+                    clean(row.supplier),
+                    clean(row.itemName),
+                    clean(row.option),
+                    purchase,
+                    price15, diff15,
+                    price16, diff16,
+                    price18, diff18,
+                    price20, diff20,
+                    clean(row.note)
+                ].join('\t'));
+            });
+
+            const tsvText = tsvLines.join('\n');
+            copyTextToClipboard(
+                tsvText,
+                `시트 데이터 <strong>${validRows.length}건</strong>이 복사되었습니다. 엑셀·구글 시트에 붙여넣기(Ctrl+V) 하세요.`
+            );
+        }
+
+        // ==========================================
+        // 초기화 및 이벤트 바인딩
+        // ==========================================
+        document.addEventListener('DOMContentLoaded', () => {
+            // 작성일자 표시
+            const now = new Date();
+            const days = ['일', '월', '화', '수', '목', '금', '토'];
+            const formattedDate = `${now.getFullYear()}년 ${String(now.getMonth() + 1).padStart(2, '0')}월 ${String(now.getDate()).padStart(2, '0')}일 (${days[now.getDay()]})`;
+            document.getElementById('current-date').textContent = formattedDate;
+
+            // 행 추가 버튼들
+            document.getElementById('btn-add-row').addEventListener('click', () => addRow(true));
+            document.getElementById('btn-add-five').addEventListener('click', () => addMultipleRows(5));
+
+            // 시트 복사 및 CSV 다운로드 버튼
+            document.getElementById('btn-copy-sheet').addEventListener('click', copySheetForSpreadsheet);
+            document.getElementById('btn-download-csv').addEventListener('click', downloadSheetAsCSV);
+
+            // 초기화 확인 배너 제어
+            const resetBar = document.getElementById('reset-confirm-bar');
+            document.getElementById('btn-reset-trigger').addEventListener('click', () => {
+                resetBar.classList.remove('hidden');
+            });
+            document.getElementById('btn-reset-cancel').addEventListener('click', () => {
+                resetBar.classList.add('hidden');
+            });
+            document.getElementById('btn-reset-confirm').addEventListener('click', () => {
+                quoteRows = [
+                    { id: generateId(), supplier: '', itemName: '', option: '', purchasePrice: 0, note: '' },
+                    { id: generateId(), supplier: '', itemName: '', option: '', purchasePrice: 0, note: '' },
+                    { id: generateId(), supplier: '', itemName: '', option: '', purchasePrice: 0, note: '' }
+                ];
+                resetBar.classList.add('hidden');
+                renderTable(true);
+                showToast('견적표가 초기화되었습니다.');
+            });
+
+            // 인쇄 버튼
+            document.getElementById('btn-print').addEventListener('click', () => {
+                window.print();
+            });
+
+            // 초기 테이블 렌더링
+            renderTable(false);
+        });
+    </script>
+</body>
+</html>
